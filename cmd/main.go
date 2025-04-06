@@ -24,16 +24,21 @@ import (
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"kubevirt.io/client-go/kubecli"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+
+	templateopenshiftiov1 "github/namu-north-america/templates/api/template.openshift.io/v1"
+	templateopenshiftiocontroller "github/namu-north-america/templates/internal/controller/template.openshift.io"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -45,6 +50,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
+	utilruntime.Must(templateopenshiftiov1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -122,7 +128,7 @@ func main() {
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "eff8d909.templates.cocktail-virt.io",
+		LeaderElectionID:       "ed0e30df.templates.cocktail-virt.io",
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
@@ -140,6 +146,24 @@ func main() {
 		os.Exit(1)
 	}
 
+	restConfig, err := config.GetConfig()
+	if err != nil {
+		setupLog.Error(err, "failed to get rest config")
+	}
+
+	virtclient, err := kubecli.GetKubevirtClientFromRESTConfig(restConfig)
+	if err != nil {
+		setupLog.Error(err, "failed to create virtclient config")
+	}
+
+	if err = (&templateopenshiftiocontroller.TemplateReconciler{
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		VirtClient: virtclient,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "Template")
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
