@@ -51,6 +51,7 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(templateopenshiftiov1.AddToScheme(scheme))
+
 	// +kubebuilder:scaffold:scheme
 }
 

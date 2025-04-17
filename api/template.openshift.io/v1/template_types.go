@@ -67,6 +67,7 @@ type TemplateParameter struct {
 // TemplateStatus holds observed state (optional).
 type TemplateStatus struct {
 	// Define fields here if needed.
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 //+kubebuilder:object:root=true
