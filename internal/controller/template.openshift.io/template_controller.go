@@ -18,7 +18,7 @@ package templateopenshiftio
 
 import (
 	"context"
-	"fmt"
+	"slices"
 
 	templatev1 "github/namu-north-america/templates/api/template.openshift.io/v1"
 
@@ -29,12 +29,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"k8s.io/apimachinery/pkg/runtime"
-	v1 "kubevirt.io/api/core/v1"
 	kubevirtclient "kubevirt.io/client-go/kubecli"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
+
+// custom finalizer
+var TemplateFinalizer = "template.cocktail-virt.io/finalizer"
 
 // TemplateReconciler reconciles a Template object
 type TemplateReconciler struct {
@@ -75,7 +77,7 @@ func (r *TemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, nil
 	}
 
-	// 3) Produce a VirtualMachine object from the Template
+	// Produce a VirtualMachine object from the Template
 	machine, err := vm.VMFromTemplate(tpl)
 	if err != nil {
 		logger.Error(err, "could not extract VM from template")
@@ -99,7 +101,56 @@ func (r *TemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	machine.Labels["vm.kubevirt.io/template"] = tpl.Name
 	machine.Labels["managed-by"] = "template-vm-controller"
 
-	// 5) Skip if it already exists
+	// if template is marked for deletion, remove the finalizer
+	if tpl.ObjectMeta.DeletionTimestamp.IsZero() {
+		// The object is not being deleted
+		if !slices.Contains(tpl.ObjectMeta.Finalizers, TemplateFinalizer) {
+			// Add our finalizer for this CR
+			tpl.ObjectMeta.Finalizers = append(tpl.ObjectMeta.Finalizers, TemplateFinalizer)
+			if err := r.Update(ctx, &tpl); err != nil {
+				logger.Error(err, "failed to update Template with finalizer")
+
+				return ctrl.Result{}, err
+			}
+		}
+	} else {
+		// The object is being deleted
+		if slices.Contains(tpl.ObjectMeta.Finalizers, TemplateFinalizer) {
+
+			// delete vm
+			vm, err := r.VirtClient.VirtualMachine(tpl.Namespace).Get(ctx, vmName, metav1.GetOptions{})
+			if err != nil {
+				if errors.IsNotFound(err) {
+					logger.Info("VM not found, ignoring", "vm", vmName)
+					return ctrl.Result{}, nil
+				} else {
+					logger.Error(err, "failed to get VM", "vm", vmName)
+					return ctrl.Result{}, err
+				}
+			}
+			// delete the vm
+			if err := r.VirtClient.VirtualMachine(tpl.Namespace).Delete(ctx, vm.Name, metav1.DeleteOptions{}); err != nil {
+				if errors.IsNotFound(err) {
+					logger.Info("VM not found, ignoring", "vm", vmName)
+					return ctrl.Result{}, nil
+				} else {
+					logger.Error(err, "failed to delete VM", "vm", vmName)
+					return ctrl.Result{}, err
+				}
+			}
+			logger.Info("Deleted VM from template", "vm", vmName)
+
+			// remove our finalizer from the list and update it.
+			tpl.ObjectMeta.Finalizers = removeString(tpl.ObjectMeta.Finalizers, TemplateFinalizer)
+			if err := r.Update(ctx, &tpl); err != nil {
+				logger.Error(err, "failed to update Template with finalizer")
+
+				return ctrl.Result{}, err
+			}
+		}
+		return ctrl.Result{}, nil
+	}
+
 	if _, err := r.VirtClient.VirtualMachine(tpl.Namespace).Get(ctx, vmName, metav1.GetOptions{}); err == nil {
 		logger.Info("VM already exists, skipping", "vm", vmName)
 		return ctrl.Result{}, nil
@@ -141,49 +192,12 @@ func (r *TemplateReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-// use the virtclient to watch for VM events and react
-func (r *TemplateReconciler) WatchVMs(ctx context.Context, virtClient kubevirtclient.KubevirtClient) {
-	logger := log.FromContext(ctx)
-
-	// watch for VM events
-	vms, err := virtClient.VirtualMachine("").Watch(ctx, metav1.ListOptions{})
-	if err != nil {
-		logger.Error(err, "failed starting watch for VMs")
-		return
-	}
-
-	defer vms.Stop()
-	for event := range vms.ResultChan() {
-		switch event.Type {
-		case "DELETED":
-			// obtain the VM object
-			vm, ok := event.Object.(*v1.VirtualMachine)
-			if !ok {
-				logger.Error(fmt.Errorf("failed to cast event object to VM"), "event", event)
-				continue
-			}
-			// obtain template name from the VM
-			_, ok = vm.Labels["vm.kubevirt.io/template"]
-			if !ok {
-				// if the VM doesn't have the label, we can't do anything
-				logger.Info("VM does not have template label, skipping", "vm", vm.Name)
-				continue
-			}
-			// delete the vm but not the template
-			if err := virtClient.VirtualMachine(vm.Namespace).Delete(ctx, vm.Name, metav1.DeleteOptions{}); err != nil {
-				if errors.IsNotFound(err) {
-					// if the VM is not found, we can ignore it
-					logger.Info("VM not found, ignoring", "vm", vm.Name)
-					continue
-				} else {
-					// if the VM is found, we need to delete it
-					logger.Error(err, "failed to delete VM", "vm", vm.Name)
-				}
-
-			} else {
-				logger.Info("Deleted VM from template", "vm", vm.Name)
-			}
-
+// removeString removes a string from a slice
+func removeString(slice []string, str string) []string {
+	for i, s := range slice {
+		if s == str {
+			return append(slice[:i], slice[i+1:]...)
 		}
 	}
+	return slice
 }
