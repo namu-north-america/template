@@ -36,6 +36,7 @@ import (
 )
 
 // custom finalizer
+// var test
 var TemplateFinalizer = "template.cocktail-virt.io/finalizer"
 
 // TemplateReconciler reconciles a Template object
