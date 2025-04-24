@@ -24,7 +24,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github/namu-north-america/templates/test/utils"
+	"github.com/namu-north-america/templates/test/utils"
 )
 
 const namespace = "template-system"
