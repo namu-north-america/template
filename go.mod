@@ -1,4 +1,4 @@
-module github/namu-north-america/templates
+module github.com/namu-north-america/templates
 
 go 1.23.0
 

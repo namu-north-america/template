@@ -37,8 +37,8 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	templateopenshiftiov1 "github/namu-north-america/templates/api/template.openshift.io/v1"
-	templateopenshiftiocontroller "github/namu-north-america/templates/internal/controller/template.openshift.io"
+	templateopenshiftiov1 "github.com/namu-north-america/templates/api/template.openshift.io/v1"
+	templateopenshiftiocontroller "github.com/namu-north-america/templates/internal/controller/template.openshift.io"
 	// +kubebuilder:scaffold:imports
 )
 

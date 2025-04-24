@@ -4,7 +4,8 @@ import (
 	"fmt"
 
 	"encoding/json"
-	templatev1 "github/namu-north-america/templates/api/template.openshift.io/v1"
+
+	templatev1 "github.com/namu-north-america/templates/api/template.openshift.io/v1"
 
 	v1 "kubevirt.io/api/core/v1"
 

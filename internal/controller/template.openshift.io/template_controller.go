@@ -20,9 +20,9 @@ import (
 	"context"
 	"slices"
 
-	templatev1 "github/namu-north-america/templates/api/template.openshift.io/v1"
+	templatev1 "github.com/namu-north-america/templates/api/template.openshift.io/v1"
 
-	"github/namu-north-america/templates/pkg/vm"
+	"github.com/namu-north-america/templates/pkg/vm"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -100,6 +100,7 @@ func (r *TemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 	machine.Labels["vm.kubevirt.io/template"] = tpl.Name
 	machine.Labels["managed-by"] = "template-vm-controller"
+	machine.Labels["vm.kubevirt.io/template-namespace"] = tpl.Namespace
 
 	// if template is marked for deletion, remove the finalizer
 	if tpl.ObjectMeta.DeletionTimestamp.IsZero() {
