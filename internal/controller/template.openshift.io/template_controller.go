@@ -18,7 +18,6 @@ package templateopenshiftio
 
 import (
 	"context"
-	"slices"
 
 	templatev1 "github.com/namu-north-america/templates/api/template.openshift.io/v1"
 
@@ -103,55 +102,11 @@ func (r *TemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	machine.Labels["managed-by"] = "template-vm-controller"
 	machine.Labels["vm.kubevirt.io/template-namespace"] = tpl.Namespace
 
-	// if template is marked for deletion, remove the finalizer
-	if tpl.ObjectMeta.DeletionTimestamp.IsZero() {
-		// The object is not being deleted
-		if !slices.Contains(tpl.ObjectMeta.Finalizers, TemplateFinalizer) {
-			// Add our finalizer for this CR
-			tpl.ObjectMeta.Finalizers = append(tpl.ObjectMeta.Finalizers, TemplateFinalizer)
-			if err := r.Update(ctx, &tpl); err != nil {
-				logger.Error(err, "failed to update Template with finalizer")
-
-				return ctrl.Result{}, err
-			}
-		}
-	} else {
-		// The object is being deleted
-		if slices.Contains(tpl.ObjectMeta.Finalizers, TemplateFinalizer) {
-
-			// delete vm
-			vm, err := r.VirtClient.VirtualMachine(tpl.Namespace).Get(ctx, vmName, metav1.GetOptions{})
-			if err != nil {
-				if errors.IsNotFound(err) {
-					logger.Info("VM not found, ignoring", "vm", vmName)
-					return ctrl.Result{}, nil
-				} else {
-					logger.Error(err, "failed to get VM", "vm", vmName)
-					return ctrl.Result{}, err
-				}
-			}
-			// delete the vm
-			if err := r.VirtClient.VirtualMachine(tpl.Namespace).Delete(ctx, vm.Name, metav1.DeleteOptions{}); err != nil {
-				if errors.IsNotFound(err) {
-					logger.Info("VM not found, ignoring", "vm", vmName)
-					return ctrl.Result{}, nil
-				} else {
-					logger.Error(err, "failed to delete VM", "vm", vmName)
-					return ctrl.Result{}, err
-				}
-			}
-			logger.Info("Deleted VM from template", "vm", vmName)
-
-			// remove our finalizer from the list and update it.
-			tpl.ObjectMeta.Finalizers = removeString(tpl.ObjectMeta.Finalizers, TemplateFinalizer)
-			if err := r.Update(ctx, &tpl); err != nil {
-				logger.Error(err, "failed to update Template with finalizer")
-
-				return ctrl.Result{}, err
-			}
-		}
-		return ctrl.Result{}, nil
+	// add the finalizer to the VM
+	if machine.ObjectMeta.Finalizers == nil {
+		machine.ObjectMeta.Finalizers = []string{}
 	}
+	machine.ObjectMeta.Finalizers = append(machine.ObjectMeta.Finalizers, TemplateFinalizer)
 
 	if _, err := r.VirtClient.VirtualMachine(tpl.Namespace).Get(ctx, vmName, metav1.GetOptions{}); err == nil {
 		logger.Info("VM already exists, skipping", "vm", vmName)
